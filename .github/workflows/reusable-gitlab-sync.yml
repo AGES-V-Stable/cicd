@@ -1,0 +1,136 @@
+name: Reusable GitLab Sync
+
+on:
+  workflow_call:
+    inputs:
+      gitlab_host:
+        description: 'GitLab instance hostname (e.g. tools.ages.pucrs.br)'
+        required: false
+        default: 'tools.ages.pucrs.br'
+        type: string
+      gitlab_group:
+        description: 'GitLab group/subgroup (e.g. v-stable)'
+        required: false
+        default: 'v-stable'
+        type: string
+      gitlab_project_path:
+        description: 'GitLab target project path (defaults to <gitlab_group>/<repo_name>, e.g. v-stable/backend)'
+        required: false
+        default: ''
+        type: string
+      target_branch:
+        description: 'Target branch to synchronize (defaults to PR head branch or current ref)'
+        required: false
+        default: ''
+        type: string
+      force_push:
+        description: 'Allow force push to mirror repository state from GitHub to GitLab'
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      GITLAB_SYNC_TOKEN:
+        required: true
+        description: 'GitLab access token (e.g. github-sync-token) with write_repository scope'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync Repository to GitLab
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Environment & AppSec Policy
+        id: check_env
+        env:
+          SYNC_TOKEN: ${{ secrets.GITLAB_SYNC_TOKEN }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            if [ "$IS_FORK" = "true" ]; then
+              echo "::warning::Workflow disparado a partir de um fork sem acesso a secrets. Sincronização ignorada por segurança."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Secret GITLAB_SYNC_TOKEN não encontrada ou vazia. Verifique a configuração na Organization ou Repository."
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Target Branch
+        if: steps.check_env.outputs.skip != 'true'
+        id: resolve_ref
+        env:
+          INPUT_BRANCH: ${{ inputs.target_branch }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ -n "$INPUT_BRANCH" ]; then
+            SYNC_BRANCH="$INPUT_BRANCH"
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            SYNC_BRANCH="$PR_HEAD_REF"
+          else
+            SYNC_BRANCH="$REF_NAME"
+          fi
+
+          echo "Branch resolvida para sincronização: $SYNC_BRANCH"
+          echo "branch=$SYNC_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Source Code
+        if: steps.check_env.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve_ref.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Push to GitLab
+        if: steps.check_env.outputs.skip != 'true'
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_SYNC_TOKEN }}
+          GITLAB_HOST: ${{ inputs.gitlab_host }}
+          GITLAB_GROUP: ${{ inputs.gitlab_group }}
+          GITLAB_PROJECT: ${{ inputs.gitlab_project_path }}
+          SYNC_BRANCH: ${{ steps.resolve_ref.outputs.branch }}
+          INPUT_FORCE: ${{ inputs.force_push }}
+        run: |
+          # Mascaramento preventivo de tokens no log
+          echo "::add-mask::$GITLAB_TOKEN"
+
+          # Determina o path do projeto no GitLab (padrão: <group>/<repo_name>)
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          TARGET_GROUP="${GITLAB_GROUP:-v-stable}"
+          DEFAULT_PROJECT_PATH="${TARGET_GROUP}/${REPO_NAME}"
+          TARGET_PROJECT="${GITLAB_PROJECT:-$DEFAULT_PROJECT_PATH}"
+          
+          # Sanitização de entradas para evitar injection
+          TARGET_PROJECT=$(echo "$TARGET_PROJECT" | tr -d '\r\n ')
+          GITLAB_HOST=$(echo "$GITLAB_HOST" | tr -d '\r\n ')
+
+          # URL remota segura (sem credenciais embutidas na URL para evitar vazamento em traces/erros)
+          REMOTE_URL="https://${GITLAB_HOST}/${TARGET_PROJECT}.git"
+
+          # Criação do cabeçalho de autenticação HTTP Basic (oauth2:<token>)
+          BASIC_AUTH=$(printf "oauth2:%s" "$GITLAB_TOKEN" | base64 -w 0)
+          echo "::add-mask::$BASIC_AUTH"
+
+          # Espelhamento (mirroring) unidirecional GitHub -> GitLab:
+          # Permite --force por padrão para sobrescrever commits iniciais/divergentes no GitLab
+          PUSH_FLAGS=""
+          if [ "$INPUT_FORCE" = "true" ]; then
+            PUSH_FLAGS="--force"
+          fi
+
+          echo "==> Sincronizando branch '${SYNC_BRANCH}' com o GitLab [https://${GITLAB_HOST}/${TARGET_PROJECT}.git]..."
+
+          if ! git -c http.extraheader="Authorization: Basic ${BASIC_AUTH}" \
+              push \
+              $PUSH_FLAGS \
+              "${REMOTE_URL}" \
+              "HEAD:refs/heads/${SYNC_BRANCH}"; then
+            echo "::error::Falha ao realizar push para o GitLab. Se a branch '${SYNC_BRANCH}' for protegida no GitLab, certifique-se de que a opção 'Allowed to force push' está habilitada em: Settings > Repository > Protected Branches no GitLab."
+            exit 1
+          fi
+
+          echo "==> Sincronização concluída com sucesso para a branch '${SYNC_BRANCH}'!"

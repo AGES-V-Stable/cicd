@@ -19,7 +19,7 @@ provider "aws" {
   default_tags {
     tags = {
       Application = "vstable-backend"
-      Deployment  = var.deployment_name
+      Deployment  = "vstable-staging"
       ManagedBy   = "terraform"
     }
   }

@@ -1,4 +1,16 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_region" {
+    defaults = {
+      region = "us-east-2"
+    }
+  }
+
   mock_data "aws_availability_zones" {
     defaults = {
       names = ["us-east-2a", "us-east-2b"]
@@ -10,7 +22,7 @@ run "network_keeps_database_private" {
   command = plan
 
   module {
-    source = "./modules/network"
+    source = "../../modules/network"
   }
 
   variables {
@@ -35,7 +47,7 @@ run "database_is_private_and_has_requested_retention" {
   command = plan
 
   module {
-    source = "./modules/database"
+    source = "../../modules/database"
   }
 
   variables {
@@ -72,7 +84,7 @@ run "lambda_and_gateway_keep_existing_http_contract" {
   command = plan
 
   module {
-    source = "./modules/api"
+    source = "../../modules/api"
   }
 
   variables {
@@ -118,5 +130,52 @@ run "lambda_and_gateway_keep_existing_http_contract" {
       aws_db_proxy.backend.require_tls
     )
     error_message = "HTTP API must preserve unprefixed routes and the database proxy must require TLS."
+  }
+}
+
+run "frontend_is_private_and_served_over_https" {
+  command = plan
+
+  module {
+    source = "../../modules/frontend"
+  }
+
+  variables {
+    name = "vstable-test"
+  }
+
+  assert {
+    condition = (
+      aws_s3_bucket_public_access_block.frontend.block_public_policy &&
+      aws_s3_bucket_public_access_block.frontend.restrict_public_buckets &&
+      aws_cloudfront_origin_access_control.frontend.signing_behavior == "always" &&
+      aws_cloudfront_distribution.frontend.default_cache_behavior[0].viewer_protocol_policy == "redirect-to-https" &&
+      aws_cloudfront_function.spa_routes.publish
+    )
+    error_message = "The React bucket must be private and served through signed HTTPS CloudFront requests."
+  }
+}
+
+run "production_deploy_role_accepts_only_release_refs" {
+  command = plan
+
+  module {
+    source = "../../modules/frontend_deploy_role"
+  }
+
+  variables {
+    name                = "vstable-production"
+    github_oidc_subject = "repo:AGES-V-Stable/frontend:environment:production"
+    github_ref_pattern  = "refs/tags/*"
+    bucket_arn          = "arn:aws:s3:::vstable-production-test-frontend"
+    distribution_arn    = "arn:aws:cloudfront::123456789012:distribution/EXAMPLE"
+  }
+
+  assert {
+    condition = (
+      jsondecode(aws_iam_role.frontend_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AGES-V-Stable/frontend:environment:production" &&
+      jsondecode(aws_iam_role.frontend_deploy.assume_role_policy).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:ref"] == "refs/tags/*"
+    )
+    error_message = "Production deployment trust must be limited to this frontend repository's releases."
   }
 }

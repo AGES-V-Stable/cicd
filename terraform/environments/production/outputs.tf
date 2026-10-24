@@ -23,6 +23,22 @@ output "api_url" {
   value       = module.api.api_url
 }
 
+output "frontend_url" {
+  value = module.frontend.url
+}
+
+output "frontend_bucket_name" {
+  value = module.frontend.bucket_name
+}
+
+output "frontend_distribution_id" {
+  value = module.frontend.distribution_id
+}
+
+output "frontend_deploy_role_arn" {
+  value = module.frontend_deploy_role.role_arn
+}
+
 output "proxy_endpoint" {
   description = "Private RDS Proxy endpoint used by Lambda."
   value       = module.api.proxy_endpoint

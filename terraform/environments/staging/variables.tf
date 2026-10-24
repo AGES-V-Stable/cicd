@@ -1,14 +1,3 @@
-variable "deployment_name" {
-  description = "Short prefix for this deployment's AWS resource names."
-  type        = string
-  default     = "vstable-dev"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,28}[a-z0-9]$", var.deployment_name))
-    error_message = "deployment_name must be 2-30 lowercase letters, digits, or hyphens, starting with a letter and ending with a letter or digit."
-  }
-}
-
 variable "vpc_cidr" {
   description = "A free /16 IPv4 range reachable from the Terraform runner's connected network."
   type        = string
@@ -136,14 +125,10 @@ variable "image_digest" {
   }
 }
 
-variable "cors_allowed_origins" {
-  description = "Comma-separated public frontend origins accepted by Spring Security CORS."
+variable "github_oidc_subject" {
+  description = "Exact GitHub OIDC subject for the frontend repository's staging environment."
   type        = string
-
-  validation {
-    condition     = length(trimspace(var.cors_allowed_origins)) > 0
-    error_message = "cors_allowed_origins is required."
-  }
+  default     = "repo:AGES-V-Stable/frontend:environment:staging"
 }
 
 variable "avenia_base_url" {

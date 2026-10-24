@@ -1,0 +1,12 @@
+# Copy this file to terraform.tfvars (ignored by Git) or inject variables from CI.
+# Region is intentionally fixed to us-east-2 in versions.tf.
+vpc_cidr             = "10.43.0.0/16"
+runner_cidr          = "10.100.0.10/32"
+rds_ca_bundle_path   = "/path/to/global-bundle.pem"
+image_digest         = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+# The all-zero digest is ONLY for the targeted first apply. Replace it with the
+# digest returned by ECR before any full terraform plan or apply.
+
+# Supply app_db_password and jwt_secret through protected TF_VAR environment
+# variables. Optional provider_secrets is a JSON map supplied the same way.

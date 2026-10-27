@@ -19,19 +19,12 @@ module "database" {
   database_sg_id     = module.network.database_sg_id
 }
 
-module "database_role" {
-  source = "../../modules/database_role"
+removed {
+  from = module.database_role
 
-  providers = {
-    postgresql = postgresql
+  lifecycle {
+    destroy = false
   }
-
-  db_name              = var.db_name
-  app_username         = var.app_db_username
-  app_password         = var.app_db_password
-  app_password_version = var.app_password_version
-
-  depends_on = [module.database]
 }
 
 module "registry" {
@@ -63,14 +56,12 @@ module "api" {
   image_uri              = "${module.registry.repository_url}@${var.image_digest}"
   private_subnet_ids     = module.network.private_subnet_ids
   lambda_sg_id           = module.network.lambda_sg_id
-  proxy_sg_id            = module.network.proxy_sg_id
-  db_instance_identifier = module.database.identifier
+  db_host                = module.database.address
   db_name                = var.db_name
-  app_db_username        = var.app_db_username
-  app_db_password        = var.app_db_password
+  db_username            = module.database.master_username
+  db_password            = jsondecode(ephemeral.aws_secretsmanager_secret_version.rds_master.secret_string).password
   jwt_secret             = var.jwt_secret
   provider_secrets       = var.provider_secrets
-  app_password_version   = var.app_password_version
   app_config_version     = var.app_config_version
   cors_allowed_origins   = module.frontend.url
   avenia_base_url        = var.avenia_base_url
@@ -80,5 +71,5 @@ module "api" {
   http_read_timeout      = var.http_read_timeout
   quote_provider_timeout = var.quote_provider_timeout
 
-  depends_on = [module.database_role, module.registry]
+  depends_on = [module.network, module.registry]
 }

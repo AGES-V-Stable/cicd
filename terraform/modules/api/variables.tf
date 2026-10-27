@@ -14,11 +14,7 @@ variable "lambda_sg_id" {
   type = string
 }
 
-variable "proxy_sg_id" {
-  type = string
-}
-
-variable "db_instance_identifier" {
+variable "db_host" {
   type = string
 }
 
@@ -26,11 +22,11 @@ variable "db_name" {
   type = string
 }
 
-variable "app_db_username" {
+variable "db_username" {
   type = string
 }
 
-variable "app_db_password" {
+variable "db_password" {
   type      = string
   sensitive = true
   ephemeral = true
@@ -46,10 +42,6 @@ variable "provider_secrets" {
   type      = map(string)
   sensitive = true
   ephemeral = true
-}
-
-variable "app_password_version" {
-  type = number
 }
 
 variable "app_config_version" {

@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-    postgresql = {
-      source  = "cyrilgdn/postgresql"
-      version = "~> 1.27"
-    }
   }
 }
 
@@ -27,17 +23,4 @@ provider "aws" {
 
 ephemeral "aws_secretsmanager_secret_version" "rds_master" {
   secret_id = module.database.master_secret_arn
-}
-
-provider "postgresql" {
-  host             = module.database.address
-  port             = 5432
-  database         = "postgres"
-  username         = module.database.master_username
-  password         = jsondecode(ephemeral.aws_secretsmanager_secret_version.rds_master.secret_string).password
-  superuser        = false
-  sslmode          = "verify-full"
-  sslrootcert      = var.rds_ca_bundle_path
-  connect_timeout  = 15
-  expected_version = "16"
 }

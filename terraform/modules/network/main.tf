@@ -106,24 +106,7 @@ resource "aws_vpc_security_group_egress_rule" "lambda_outbound" {
   security_group_id = aws_security_group.lambda.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
-  description       = "Database proxy and HTTPS providers through NAT"
-}
-
-resource "aws_security_group" "proxy" {
-  name_prefix = "${var.name}-proxy-"
-  description = "RDS Proxy access from Lambda"
-  vpc_id      = aws_vpc.main.id
-
-  tags = { Name = "${var.name}-proxy-sg" }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "lambda_to_proxy" {
-  security_group_id            = aws_security_group.proxy.id
-  referenced_security_group_id = aws_security_group.lambda.id
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  description                  = "PostgreSQL from Lambda"
+  description       = "Direct RDS access and HTTPS providers through NAT"
 }
 
 resource "aws_security_group" "database" {
@@ -134,22 +117,13 @@ resource "aws_security_group" "database" {
   tags = { Name = "${var.name}-database-sg" }
 }
 
-resource "aws_vpc_security_group_egress_rule" "proxy_to_database" {
-  security_group_id            = aws_security_group.proxy.id
-  referenced_security_group_id = aws_security_group.database.id
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-  description                  = "PostgreSQL to RDS"
-}
-
-resource "aws_vpc_security_group_ingress_rule" "proxy_to_database" {
+resource "aws_vpc_security_group_ingress_rule" "lambda_to_database" {
   security_group_id            = aws_security_group.database.id
-  referenced_security_group_id = aws_security_group.proxy.id
+  referenced_security_group_id = aws_security_group.lambda.id
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "PostgreSQL from RDS Proxy"
+  description                  = "PostgreSQL directly from Lambda"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "runner_to_database" {

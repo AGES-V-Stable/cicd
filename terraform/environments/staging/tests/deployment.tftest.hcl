@@ -37,9 +37,11 @@ run "network_keeps_database_private" {
       aws_subnet.private["0"].cidr_block == "10.42.2.0/24" &&
       aws_subnet.private["1"].cidr_block == "10.42.3.0/24" &&
       !aws_subnet.private["0"].map_public_ip_on_launch &&
-      aws_vpc_security_group_ingress_rule.runner_to_database.cidr_ipv4 == "10.100.0.10/32"
+      aws_vpc_security_group_ingress_rule.runner_to_database.cidr_ipv4 == "10.100.0.10/32" &&
+      aws_vpc_security_group_ingress_rule.lambda_to_database.referenced_security_group_id == aws_security_group.lambda.id &&
+      aws_vpc_security_group_ingress_rule.lambda_to_database.from_port == 5432
     )
-    error_message = "The database must use two private subnets and accept only the specified connected runner CIDR."
+    error_message = "The database must use two private subnets and accept PostgreSQL from Lambda and the specified runner CIDR."
   }
 }
 
@@ -89,17 +91,15 @@ run "lambda_and_gateway_keep_existing_http_contract" {
 
   variables {
     name                   = "vstable-test"
-    image_uri              = "000000000000.dkr.ecr.us-east-2.amazonaws.com/vstable-test-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    image_uri              = "000000000000.dkr.ecr.us-east-2.amazonaws.com/vstable-test-backend@sha256:1111111111111111111111111111111111111111111111111111111111111111"
     private_subnet_ids     = ["subnet-private-a", "subnet-private-b"]
     lambda_sg_id           = "sg-lambda"
-    proxy_sg_id            = "sg-proxy"
-    db_instance_identifier = "vstable-test-postgres"
+    db_host                = "vstable-test-postgres.example.rds.amazonaws.com"
     db_name                = "vstable"
-    app_db_username        = "vstable_app"
-    app_db_password        = "example-only-not-a-secret"
+    db_username            = "vstable_admin"
+    db_password            = "example-only-not-a-secret"
     jwt_secret             = join("", [for i in range(64) : "x"])
     provider_secrets       = {}
-    app_password_version   = 1
     app_config_version     = 1
     cors_allowed_origins   = "https://app.example.com"
     avenia_base_url        = "https://avenia.example.com"
@@ -117,19 +117,20 @@ run "lambda_and_gateway_keep_existing_http_contract" {
       aws_lambda_function.backend.memory_size == 2048 &&
       aws_lambda_function.backend.timeout == 30 &&
       aws_lambda_function.backend.environment[0].variables.SPRING_PROFILES_ACTIVE == "lambda" &&
-      aws_lambda_function.backend.environment[0].variables.DB_SCHEMA == "vstable"
+      aws_lambda_function.backend.environment[0].variables.DB_HOST == "vstable-test-postgres.example.rds.amazonaws.com" &&
+      aws_lambda_function.backend.environment[0].variables.DB_SCHEMA == "vstable" &&
+      aws_secretsmanager_secret_version.app.secret_string_wo_version == 2
     )
-    error_message = "Lambda must use the image runtime, x86_64, and the existing Spring profile and DB contract."
+    error_message = "Lambda must use the image runtime, x86_64, and the direct RDS connection contract."
   }
 
   assert {
     condition = (
       aws_apigatewayv2_route.default.route_key == "$default" &&
       aws_apigatewayv2_stage.default.name == "$default" &&
-      aws_apigatewayv2_integration.lambda.payload_format_version == "2.0" &&
-      aws_db_proxy.backend.require_tls
+      aws_apigatewayv2_integration.lambda.payload_format_version == "2.0"
     )
-    error_message = "HTTP API must preserve unprefixed routes and the database proxy must require TLS."
+    error_message = "HTTP API must preserve unprefixed routes."
   }
 }
 

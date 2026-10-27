@@ -19,16 +19,6 @@ variable "runner_cidr" {
   }
 }
 
-variable "rds_ca_bundle_path" {
-  description = "Absolute path on the Terraform runner to the trusted RDS CA PEM bundle."
-  type        = string
-
-  validation {
-    condition     = length(trimspace(var.rds_ca_bundle_path)) > 0
-    error_message = "rds_ca_bundle_path is required."
-  }
-}
-
 variable "db_name" {
   description = "Initial PostgreSQL database name used by the application."
   type        = string
@@ -37,29 +27,6 @@ variable "db_name" {
   validation {
     condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.db_name))
     error_message = "db_name must be a lowercase PostgreSQL identifier of at most 63 characters."
-  }
-}
-
-variable "app_db_username" {
-  description = "Dedicated PostgreSQL role used by the application and RDS Proxy."
-  type        = string
-  default     = "vstable_app"
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.app_db_username))
-    error_message = "app_db_username must be a lowercase PostgreSQL identifier of at most 63 characters."
-  }
-}
-
-variable "app_db_password" {
-  description = "Application database password. Supply through a protected TF_VAR environment variable."
-  type        = string
-  sensitive   = true
-  ephemeral   = true
-
-  validation {
-    condition     = length(var.app_db_password) >= 16
-    error_message = "app_db_password must contain at least 16 characters."
   }
 }
 
@@ -93,19 +60,8 @@ variable "provider_secrets" {
   }
 }
 
-variable "app_password_version" {
-  description = "Increment when app_db_password changes; updates the PostgreSQL role and proxy secret."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.app_password_version >= 1 && floor(var.app_password_version) == var.app_password_version
-    error_message = "app_password_version must be a positive integer."
-  }
-}
-
 variable "app_config_version" {
-  description = "Increment when any value in the Lambda application JSON secret changes."
+  description = "Increment when the RDS master password or any Lambda application secret changes."
   type        = number
   default     = 1
 

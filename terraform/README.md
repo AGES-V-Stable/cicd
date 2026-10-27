@@ -9,7 +9,10 @@ This directory contains two independent deployments in `us-east-2`:
 
 Each root has its own local Terraform state and creates a VPC, private PostgreSQL
 database, ECR repository, Lambda HTTP API, private S3 bucket, CloudFront
-distribution, and frontend deployment IAM role. Keep each state file on a secure,
+distribution, and frontend deployment IAM role. Lambda connects directly to the
+private RDS endpoint as the RDS-managed master user (`vstable_admin`). The master
+user has `rds_superuser` privileges, so this choice gives the application broad
+database access. Keep each state file on a secure,
 persistent runner. Do not run the old root-level Terraform commands; the root is
 now a module and test directory. Both databases retain the existing Single-AZ,
 no-backup, no-final-snapshot policy and deletion protection.
@@ -30,19 +33,22 @@ the `global` state alongside the environment states.
 
 ## Provision an environment
 
-Use Terraform 1.11+, Docker Buildx, AWS CLI, and a runner connected to the new
-VPC's private database network. The runner must have a route to the private
-subnets and a trusted [RDS CA bundle](https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem).
+Use Terraform 1.11+, Docker Buildx, and AWS CLI. Terraform reaches RDS only
+through AWS APIs; the runner no longer needs a PostgreSQL connection to the
+private database. A separate admin client still needs a private route to the
+RDS subnet and the `runner_cidr` security group allowance.
 Create `terraform.tfvars` from the chosen root's `terraform.tfvars.example` and
-set its runner CIDR and CA path. The example's all-zero image digest is only
-valid for the first targeted apply. Supply `TF_VAR_app_db_password` (16+
-characters), `TF_VAR_jwt_secret` (64+ characters), and optional
+set its runner CIDR. The example's all-zero image digest is only valid for the
+first targeted apply. Supply `TF_VAR_jwt_secret` (64+ characters) and optional
 `TF_VAR_provider_secrets` from protected environment settings, separately for
 each environment. Do not put credentials in `.tfvars` or logs.
 
 For staging, run the following commands from the repository root. Replace the
 path with `terraform/environments/production` for production, and use an image
-tag unique to that environment's immutable ECR repository.
+tag unique to that environment's immutable ECR repository. The backend source
+and its Lambda-compatible `Dockerfile.lambda` must be available in a separate
+checkout; this infrastructure repository contains neither. A normal web-server
+image is not sufficient for an AWS Lambda image deployment.
 
 ```bash
 terraform -chdir=terraform/environments/staging init
@@ -65,12 +71,25 @@ IMAGE_DIGEST=$(aws ecr describe-images --region us-east-2 \
 terraform -chdir=terraform/environments/staging apply
 ```
 
-Finish the runner's private network route before the full apply. Terraform's
-PostgreSQL provider must connect directly to RDS to create the application
-role. A later backend release uses a new digest in the selected environment's
-`.tfvars` and a full apply. Changing the DB password requires incrementing
-`app_password_version` and `app_config_version`; changing other app secrets
-requires incrementing `app_config_version`.
+The RDS-managed master password is read ephemerally from Secrets Manager during
+the full apply and copied into the Lambda app-config secret as `DB_PASSWORD`.
+The Lambda uses `DB_HOST` set to the direct RDS endpoint and reads that secret
+using its IAM role. The private subnets have NAT access for Secrets Manager;
+the RDS security group permits the Lambda security group on port 5432. The
+application image must read `APP_CONFIG_SECRET_ARN` and use `DB_USERNAME` and
+`DB_PASSWORD` from the secret. A later backend release uses a new digest in the
+selected environment's `.tfvars` and a full apply. After rotating the RDS
+master password, increment `app_config_version` and apply again to refresh the
+Lambda app-config secret. Increment it for any other app secret change as well.
+The migration adds one to the configured version to force the existing app
+secret to receive the master credentials on the first apply.
+
+If migrating an environment that already has the former application database
+role, the `removed` block forgets that role without dropping it. The obsolete
+RDS Proxy and its secret are removed by the plan. Review those changes before
+applying. Existing local `.tfvars` files should remove the obsolete
+`rds_ca_bundle_path`, `app_db_username`, `app_db_password`, and
+`app_password_version` entries; keep the current state file.
 
 ## Frontend GitHub Actions
 

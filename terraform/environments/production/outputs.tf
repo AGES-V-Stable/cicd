@@ -4,7 +4,7 @@ output "ecr_repository_url" {
 }
 
 output "rds_endpoint" {
-  description = "Private direct RDS endpoint for the connected Terraform runner."
+  description = "Private direct RDS endpoint used by Lambda."
   value       = module.database.address
 }
 
@@ -37,11 +37,6 @@ output "frontend_distribution_id" {
 
 output "frontend_deploy_role_arn" {
   value = module.frontend_deploy_role.role_arn
-}
-
-output "proxy_endpoint" {
-  description = "Private RDS Proxy endpoint used by Lambda."
-  value       = module.api.proxy_endpoint
 }
 
 output "app_secret_arn" {

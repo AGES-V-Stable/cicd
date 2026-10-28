@@ -166,7 +166,7 @@ run "production_deploy_role_accepts_only_release_refs" {
 
   variables {
     name                = "vstable-production"
-    github_oidc_subject = "repo:AGES-V-Stable/frontend:environment:production"
+    github_oidc_subject = "repo:AGES-V-Stable@311973495/frontend@1329059304:environment:production"
     github_ref_pattern  = "refs/tags/*"
     bucket_arn          = "arn:aws:s3:::vstable-production-test-frontend"
     distribution_arn    = "arn:aws:cloudfront::123456789012:distribution/EXAMPLE"
@@ -174,9 +174,39 @@ run "production_deploy_role_accepts_only_release_refs" {
 
   assert {
     condition = (
-      jsondecode(aws_iam_role.frontend_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AGES-V-Stable/frontend:environment:production" &&
+      jsondecode(aws_iam_role.frontend_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AGES-V-Stable@311973495/frontend@1329059304:environment:production" &&
       jsondecode(aws_iam_role.frontend_deploy.assume_role_policy).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:ref"] == "refs/tags/*"
     )
     error_message = "Production deployment trust must be limited to this frontend repository's releases."
+  }
+}
+
+run "backend_deploy_role_scopes_oidc_and_deployment_permissions" {
+  command = plan
+
+  module {
+    source = "../../modules/backend_deploy_role"
+  }
+
+  variables {
+    name                 = "vstable-staging"
+    github_oidc_subject  = "repo:AGES-V-Stable@311973495/backend@1332068074:environment:staging"
+    github_ref_pattern   = "refs/heads/main"
+    ecr_repository_arn   = "arn:aws:ecr:us-east-2:123456789012:repository/vstable-staging-backend"
+    lambda_function_arns = ["arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend"]
+  }
+
+  assert {
+    condition = (
+      jsondecode(aws_iam_role.backend_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AGES-V-Stable@311973495/backend@1332068074:environment:staging" &&
+      jsondecode(aws_iam_role.backend_deploy.assume_role_policy).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:ref"] == "refs/heads/main" &&
+      contains(jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Action, "ecr:GetAuthorizationToken") &&
+      contains(jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Action, "ecr-public:GetAuthorizationToken") &&
+      contains(jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Action, "sts:GetServiceBearerToken") &&
+      jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Resource == "*" &&
+      jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[1].Resource == "arn:aws:ecr:us-east-2:123456789012:repository/vstable-staging-backend" &&
+      jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[2].Resource == ["arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend"]
+    )
+    error_message = "Backend deployment must trust only the staging backend workflow and access only its ECR repository and Lambda."
   }
 }

@@ -84,7 +84,13 @@ variable "image_digest" {
 variable "github_oidc_subject" {
   description = "Exact GitHub OIDC subject for the frontend repository's staging environment."
   type        = string
-  default     = "repo:AGES-V-Stable/frontend:environment:staging"
+  default     = "repo:AGES-V-Stable@311973495/frontend@1329059304:environment:staging"
+}
+
+variable "backend_github_oidc_subject" {
+  description = "Exact GitHub OIDC subject for the backend repository's staging environment."
+  type        = string
+  default     = "repo:AGES-V-Stable@311973495/backend@1332068074:environment:staging"
 }
 
 variable "avenia_base_url" {

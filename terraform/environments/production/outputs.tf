@@ -39,6 +39,11 @@ output "frontend_deploy_role_arn" {
   value = module.frontend_deploy_role.role_arn
 }
 
+output "backend_deploy_role_arn" {
+  description = "IAM role for the backend GitHub Actions deployment."
+  value       = module.backend_deploy_role.role_arn
+}
+
 output "app_secret_arn" {
   description = "Application configuration secret ARN; no secret values are output."
   value       = module.api.app_secret_arn

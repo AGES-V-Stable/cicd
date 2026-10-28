@@ -5,3 +5,7 @@ output "api_url" {
 output "app_secret_arn" {
   value = aws_secretsmanager_secret.app.arn
 }
+
+output "backend_lambda_arn" {
+  value = aws_lambda_function.backend.arn
+}

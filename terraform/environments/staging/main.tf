@@ -41,6 +41,16 @@ module "frontend_deploy_role" {
   distribution_arn    = module.frontend.distribution_arn
 }
 
+module "backend_deploy_role" {
+  source = "../../modules/backend_deploy_role"
+
+  name                 = local.deployment_name
+  github_oidc_subject  = var.backend_github_oidc_subject
+  github_ref_pattern   = "refs/heads/main"
+  ecr_repository_arn   = module.registry.repository_arn
+  lambda_function_arns = [module.api.backend_lambda_arn]
+}
+
 module "api" {
   source = "../../modules/api"
 

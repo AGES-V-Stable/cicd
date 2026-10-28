@@ -111,13 +111,42 @@ invalidates CloudFront. It retains older assets for browser sessions using a
 previous build. A merge to `main` deploys staging; publishing a stable GitHub
 Release deploys production only if its commit belongs to `main`.
 
-The default `github_oidc_subject` assumes GitHub's repository-name subject
-format (`repo:AGES-V-Stable/frontend:environment:staging` or `production`). If
-the repository uses GitHub's immutable-ID subject format, set this variable to
-the exact subject in that environment's `.tfvars` before applying the IAM role.
-The role also restricts staging to `refs/heads/main` and production to tag refs.
+The default `github_oidc_subject` uses GitHub's immutable-ID subject format for
+`AGES-V-Stable/frontend` (owner ID `311973495`, repository ID `1329059304`).
+The staging subject ends with `:environment:staging`; the production subject
+ends with `:environment:production`. If GitHub's OIDC subject configuration
+changes, set this variable to the exact subject in that environment's `.tfvars`
+and apply the IAM role again. The role also restricts staging to
+`refs/heads/main` and production to tag refs.
 
 The CloudFront URL comes from `frontend_url`; no domain or TLS certificate setup
 is needed. Spring CORS accepts only the corresponding CloudFront origin. Verify
 deep links, login, rejected unauthenticated requests, and receipt downloads in
 both deployments.
+
+## Backend GitHub Actions
+
+The backend workflow in `AGES-V-Stable/backend` uses OIDC to push an image to ECR
+and update the Lambda. Configure its GitHub environment variables from the
+matching Terraform outputs:
+
+| GitHub environment variable | Terraform output or value |
+| --- | --- |
+| `AWS_ROLE_ARN` | `backend_deploy_role_arn` |
+| `ECR_REPOSITORY` | `ecr_repository_url` |
+| `BACKEND_LAMBDA_FUNCTION_NAME` | `vstable-staging-backend` or `vstable-production-backend` |
+| `API_URL` | `api_url` |
+
+`app_secret_arn` is a Secrets Manager ARN used by the Lambda at runtime. It is
+not an IAM role ARN and must not be assigned to `AWS_ROLE_ARN`. The backend role
+trusts the immutable-ID OIDC subject of `AGES-V-Stable/backend` (owner ID
+`311973495`, repository ID `1332068074`), with `main` for staging and release
+tags for production. If GitHub's subject configuration changes, override
+`backend_github_oidc_subject` with the exact subject before applying the role.
+
+The workflow also updates and invokes `SEED_LAMBDA_FUNCTION_NAME`. This
+Terraform configuration currently creates only the public backend Lambda. A
+separate private seed Lambda must be provisioned, its ARN added to
+`lambda_function_arns` in the matching `backend_deploy_role` module call, and
+its function name assigned to `SEED_LAMBDA_FUNCTION_NAME` before the seed step
+can succeed. Do not point that variable at the public backend Lambda.

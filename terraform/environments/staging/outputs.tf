@@ -44,6 +44,16 @@ output "backend_deploy_role_arn" {
   value       = module.backend_deploy_role.role_arn
 }
 
+output "migration_lambda_function_name" {
+  description = "Private migration Lambda name for the backend release workflow."
+  value       = module.api.migration_lambda_name
+}
+
+output "seed_lambda_function_name" {
+  description = "Private seed Lambda name for the backend release workflow."
+  value       = module.api.seed_lambda_name
+}
+
 output "app_secret_arn" {
   description = "Application configuration secret ARN; no secret values are output."
   value       = module.api.app_secret_arn

@@ -48,7 +48,11 @@ module "backend_deploy_role" {
   github_oidc_subject  = var.backend_github_oidc_subject
   github_ref_pattern   = "refs/heads/main"
   ecr_repository_arn   = module.registry.repository_arn
-  lambda_function_arns = [module.api.backend_lambda_arn]
+  lambda_function_arns = [
+    module.api.backend_lambda_arn,
+    module.api.migration_lambda_arn,
+    module.api.seed_lambda_arn,
+  ]
 }
 
 module "api" {

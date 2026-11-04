@@ -119,6 +119,19 @@ run "lambda_and_gateway_keep_existing_http_contract" {
       aws_lambda_function.backend.environment[0].variables.SPRING_PROFILES_ACTIVE == "lambda" &&
       aws_lambda_function.backend.environment[0].variables.DB_HOST == "vstable-test-postgres.example.rds.amazonaws.com" &&
       aws_lambda_function.backend.environment[0].variables.DB_SCHEMA == "vstable" &&
+      length(aws_lambda_function.internal_job) == 2 &&
+      aws_lambda_function.internal_job["migration"].environment[0].variables.SPRING_PROFILES_ACTIVE == "lambda,migration" &&
+      aws_lambda_function.internal_job["seed"].environment[0].variables.SPRING_PROFILES_ACTIVE == "lambda,seed" &&
+      aws_lambda_function.internal_job["migration"].environment[0].variables.AWS_LWA_PASS_THROUGH_PATH == "/events" &&
+      aws_lambda_function.internal_job["seed"].environment[0].variables.TRANSFERS_RECONCILIATION_ENABLED == "false" &&
+      contains(aws_lambda_function.internal_job["migration"].vpc_config[0].security_group_ids, "sg-lambda") &&
+      contains(aws_lambda_function.internal_job["seed"].vpc_config[0].security_group_ids, "sg-lambda") &&
+      aws_lambda_function.internal_job["migration"].timeout == 900 &&
+      aws_lambda_function.internal_job["seed"].timeout == 900 &&
+      aws_lambda_function.internal_job["migration"].reserved_concurrent_executions == 1 &&
+      aws_lambda_function.internal_job["seed"].reserved_concurrent_executions == 1 &&
+      contains(jsondecode(aws_iam_role_policy.internal_job_secret["migration"].policy).Statement[0].Action, "secretsmanager:GetSecretValue") &&
+      contains(jsondecode(aws_iam_role_policy.internal_job_secret["seed"].policy).Statement[0].Action, "secretsmanager:GetSecretValue") &&
       aws_secretsmanager_secret_version.app.secret_string_wo_version == 2
     )
     error_message = "Lambda must use the image runtime, x86_64, and the direct RDS connection contract."
@@ -128,7 +141,8 @@ run "lambda_and_gateway_keep_existing_http_contract" {
     condition = (
       aws_apigatewayv2_route.default.route_key == "$default" &&
       aws_apigatewayv2_stage.default.name == "$default" &&
-      aws_apigatewayv2_integration.lambda.payload_format_version == "2.0"
+      aws_apigatewayv2_integration.lambda.payload_format_version == "2.0" &&
+      aws_lambda_permission.api_gateway.function_name == "vstable-test-backend"
     )
     error_message = "HTTP API must preserve unprefixed routes."
   }
@@ -193,7 +207,11 @@ run "backend_deploy_role_scopes_oidc_and_deployment_permissions" {
     github_oidc_subject  = "repo:AGES-V-Stable@311973495/backend@1332068074:environment:staging"
     github_ref_pattern   = "refs/heads/main"
     ecr_repository_arn   = "arn:aws:ecr:us-east-2:123456789012:repository/vstable-staging-backend"
-    lambda_function_arns = ["arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend"]
+    lambda_function_arns = [
+      "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend",
+      "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-migration",
+      "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-seed",
+    ]
   }
 
   assert {
@@ -205,7 +223,11 @@ run "backend_deploy_role_scopes_oidc_and_deployment_permissions" {
       contains(jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Action, "sts:GetServiceBearerToken") &&
       jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[0].Resource == "*" &&
       jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[1].Resource == "arn:aws:ecr:us-east-2:123456789012:repository/vstable-staging-backend" &&
-      jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[2].Resource == ["arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend"]
+      jsondecode(aws_iam_role_policy.backend_deploy.policy).Statement[2].Resource == [
+        "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-backend",
+        "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-migration",
+        "arn:aws:lambda:us-east-2:123456789012:function:vstable-staging-seed",
+      ]
     )
     error_message = "Backend deployment must trust only the staging backend workflow and access only its ECR repository and Lambda."
   }

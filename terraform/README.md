@@ -56,7 +56,7 @@ terraform -chdir=terraform/environments/staging apply \
   -target=module.network -target=module.database -target=module.registry \
   -target=module.frontend -target=module.frontend_deploy_role
 
-ECR_REPOSITORY=$(terraform -chdir=terraform/environments/staging output -raw ecr_repository_url)
+ECR_REPOSITORY=395799817118.dkr.ecr.us-east-2.amazonaws.com/vstable-staging-backend
 ECR_REGISTRY=${ECR_REPOSITORY%%/*}
 ECR_NAME=${ECR_REPOSITORY#*/}
 IMAGE_TAG=deploy-001
@@ -135,6 +135,8 @@ matching Terraform outputs:
 | `AWS_ROLE_ARN` | `backend_deploy_role_arn` |
 | `ECR_REPOSITORY` | `ecr_repository_url` |
 | `BACKEND_LAMBDA_FUNCTION_NAME` | `vstable-staging-backend` or `vstable-production-backend` |
+| `MIGRATION_LAMBDA_FUNCTION_NAME` | `migration_lambda_function_name` |
+| `SEED_LAMBDA_FUNCTION_NAME` | `seed_lambda_function_name` |
 | `API_URL` | `api_url` |
 
 `app_secret_arn` is a Secrets Manager ARN used by the Lambda at runtime. It is
@@ -144,9 +146,22 @@ trusts the immutable-ID OIDC subject of `AGES-V-Stable/backend` (owner ID
 tags for production. If GitHub's subject configuration changes, override
 `backend_github_oidc_subject` with the exact subject before applying the role.
 
-The workflow also updates and invokes `SEED_LAMBDA_FUNCTION_NAME`. This
-Terraform configuration currently creates only the public backend Lambda. A
-separate private seed Lambda must be provisioned, its ARN added to
-`lambda_function_arns` in the matching `backend_deploy_role` module call, and
-its function name assigned to `SEED_LAMBDA_FUNCTION_NAME` before the seed step
-can succeed. Do not point that variable at the public backend Lambda.
+Terraform also creates private `migration` and `seed` Lambdas in each environment.
+They use the same image digest, private subnets, database security group, and app
+secret as the backend Lambda. Each has its own execution role and log group, a
+15-minute timeout, and reserved concurrency of one. Neither has an API Gateway
+route, Function URL, schedule, or resource-based invoke permission. The backend
+GitHub Actions role can update their images and invoke them using the names
+above. Other AWS principals with IAM invoke permission may also call them.
+
+The backend Spring image handles the `migration` and `seed` profiles
+through the Lambda Web Adapter's `/events` pass-through path. The release
+workflow updates the job Lambdas to the new image digest, waits for each update,
+and invokes migration before updating the public API. On staging pushes it also
+invokes seed after migration. The seed creates only the first administrator and
+does not add synthetic development data. Set `INITIAL_ADMIN_NAME` and
+`INITIAL_ADMIN_EMAIL` as staging GitHub Environment variables and
+`INITIAL_ADMIN_PASSWORD` as a staging GitHub Environment secret. Production
+releases run migration but skip seed. Keep each environment's Terraform
+`image_digest` aligned with the deployed digest so a later apply does not
+restore an older image.

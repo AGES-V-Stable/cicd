@@ -9,12 +9,12 @@ on:
         default: 'tools.ages.pucrs.br'
         type: string
       gitlab_group:
-        description: 'GitLab group/subgroup (e.g. v-stable)'
+        description: 'GitLab group/subgroup (e.g. 2026-2/2lm-4lm/v-stable)'
         required: false
-        default: 'v-stable'
+        default: '2026-2/2lm-4lm/v-stable'
         type: string
       gitlab_project_path:
-        description: 'GitLab target project path (defaults to <gitlab_group>/<repo_name>, e.g. v-stable/backend)'
+        description: 'GitLab target project path (defaults to <gitlab_group>/<repo_name>, e.g. 2026-2/2lm-4lm/v-stable/backend)'
         required: false
         default: ''
         type: string
@@ -100,7 +100,7 @@ jobs:
 
           # Determina o path do projeto no GitLab (padrão: <group>/<repo_name>)
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
-          TARGET_GROUP="${GITLAB_GROUP:-v-stable}"
+          TARGET_GROUP="${GITLAB_GROUP:-2026-2/2lm-4lm/v-stable}"
           DEFAULT_PROJECT_PATH="${TARGET_GROUP}/${REPO_NAME}"
           TARGET_PROJECT="${GITLAB_PROJECT:-$DEFAULT_PROJECT_PATH}"
           
